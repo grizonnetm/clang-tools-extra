@@ -6,10 +6,9 @@ Contexts:
   - ContextType:     Namespace
     ContextName:     b
 FilePath:        foo.h
-LineNumber:      1
 Type:            Class
-NumOccurrences:  1
-...
+Seen:            1
+Used:            0
 ---
 Name:           bar
 Contexts:
@@ -18,10 +17,10 @@ Contexts:
   - ContextType:     Namespace
     ContextName:     b
 FilePath:        ../include/bar.h
-LineNumber:      1
 Type:            Class
-NumOccurrences:  1
-...
+Seen:            1
+Used:            0
+---
 Name:           bar
 Contexts:
   - ContextType:     Namespace
@@ -29,10 +28,10 @@ Contexts:
   - ContextType:     Namespace
     ContextName:     b
 FilePath:        ../include/bar.h
-LineNumber:      2
 Type:            Class
-NumOccurrences:  3
-...
+Seen:            3
+Used:            0
+---
 Name:           bar
 Contexts:
   - ContextType:     Namespace
@@ -40,14 +39,22 @@ Contexts:
   - ContextType:     Namespace
     ContextName:     b
 FilePath:        ../include/zbar.h
-LineNumber:      1
 Type:            Class
-NumOccurrences:  3
+Seen:            3
+Used:            0
 ---
 Name:           b
 Contexts:
 FilePath:        var.h
-LineNumber:      1
 Type:            Variable
-NumOccurrences:  1
-...
+Seen:            1
+Used:            0
+---
+Name:            bar
+Contexts:
+  - ContextType:    Namespace
+    ContextName:    c
+FilePath:        test/include-fixer/baz.h
+Type:            Class
+Seen:            1
+Used:            0

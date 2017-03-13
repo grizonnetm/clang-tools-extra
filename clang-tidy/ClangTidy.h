@@ -73,6 +73,23 @@ public:
     return Result;
   }
 
+  /// \brief Read a named option from the ``Context`` and parse it as an
+  /// integral type ``T``.
+  ///
+  /// Reads the option with the check-local name \p LocalName from local or
+  /// global ``CheckOptions``. Gets local option first. If local is not present,
+  /// falls back to get global option. If global option is not present either,
+  /// returns Default.
+  template <typename T>
+  typename std::enable_if<std::is_integral<T>::value, T>::type
+  getLocalOrGlobal(StringRef LocalName, T Default) const {
+    std::string Value = getLocalOrGlobal(LocalName, "");
+    T Result = Default;
+    if (!Value.empty())
+      StringRef(Value).getAsInteger(10, Result);
+    return Result;
+  }
+
   /// \brief Stores an option with the check-local name \p LocalName with string
   /// value \p Value to \p Options.
   void store(ClangTidyOptions::OptionMap &Options, StringRef LocalName,
@@ -94,11 +111,11 @@ private:
 /// base class's methods. E.g. to implement a check that validates namespace
 /// declarations, override ``registerMatchers``:
 ///
-/// ```c++
+/// ~~~{.cpp}
 /// void registerMatchers(ast_matchers::MatchFinder *Finder) override {
 ///   Finder->addMatcher(namespaceDecl().bind("namespace"), this);
 /// }
-/// ```
+/// ~~~
 ///
 /// and then override ``check(const MatchResult &Result)`` to do the actual
 /// check for each match.
@@ -127,7 +144,7 @@ public:
   /// dependent properties, e.g. the order of include directives.
   virtual void registerPPCallbacks(CompilerInstance &Compiler) {}
 
-  /// \brief Override this to register ASTMatchers with \p Finder.
+  /// \brief Override this to register AST matchers with \p Finder.
   ///
   /// This should be used by clang-tidy checks that analyze code properties that
   /// dependent on AST knowledge.
@@ -187,9 +204,6 @@ public:
   ClangTidyOptions::OptionMap getCheckOptions();
 
 private:
-  typedef std::vector<std::pair<std::string, bool>> CheckersList;
-  CheckersList getCheckersControlList(GlobList &Filter);
-
   ClangTidyContext &Context;
   std::unique_ptr<ClangTidyCheckFactories> CheckFactories;
 };
@@ -221,13 +235,15 @@ runClangTidy(std::unique_ptr<ClangTidyOptionsProvider> OptionsProvider,
 // FIXME: Implement confidence levels for displaying/fixing errors.
 //
 /// \brief Displays the found \p Errors to the users. If \p Fix is true, \p
-/// Errors containing fixes are automatically applied.
+/// Errors containing fixes are automatically applied and reformatted. If no
+/// clang-format configuration file is found, the given \P FormatStyle is used.
 void handleErrors(const std::vector<ClangTidyError> &Errors, bool Fix,
-                  unsigned &WarningsAsErrorsCount);
+                  StringRef FormatStyle, unsigned &WarningsAsErrorsCount);
 
 /// \brief Serializes replacements into YAML and writes them to the specified
 /// output stream.
-void exportReplacements(const std::vector<ClangTidyError> &Errors,
+void exportReplacements(StringRef MainFilePath,
+                        const std::vector<ClangTidyError> &Errors,
                         raw_ostream &OS);
 
 } // end namespace tidy

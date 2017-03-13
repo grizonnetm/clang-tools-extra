@@ -8,10 +8,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "AvoidConstParamsInDecls.h"
-#include "llvm/ADT/Optional.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/Lex/Lexer.h"
+#include "llvm/ADT/Optional.h"
 
 using namespace clang::ast_matchers;
 
@@ -32,10 +32,19 @@ SourceRange getTypeRange(const ParmVarDecl &Param) {
 void AvoidConstParamsInDecls::registerMatchers(MatchFinder *Finder) {
   const auto ConstParamDecl =
       parmVarDecl(hasType(qualType(isConstQualified()))).bind("param");
-  Finder->addMatcher(functionDecl(unless(isDefinition()),
-                                  has(typeLoc(forEach(ConstParamDecl))))
-                         .bind("func"),
-                     this);
+  Finder->addMatcher(
+      functionDecl(unless(isDefinition()),
+                   // Lambdas are always their own definition, but they
+                   // generate a non-definition FunctionDecl too. Ignore those.
+                   // Class template instantiations have a non-definition
+                   // CXXMethodDecl for methods that aren't used in this
+                   // translation unit. Ignore those, as the template will have
+                   // already been checked.
+                   unless(cxxMethodDecl(ofClass(cxxRecordDecl(anyOf(
+                       isLambda(), ast_matchers::isTemplateInstantiation()))))),
+                   has(typeLoc(forEach(ConstParamDecl))))
+          .bind("func"),
+      this);
 }
 
 // Re-lex the tokens to get precise location of last 'const'
@@ -96,7 +105,7 @@ void AvoidConstParamsInDecls::check(const MatchFinder::MatchResult &Result) {
 
   CharSourceRange FileRange = Lexer::makeFileCharRange(
       CharSourceRange::getTokenRange(getTypeRange(*Param)),
-      *Result.SourceManager, Result.Context->getLangOpts());
+      *Result.SourceManager, getLangOpts());
 
   if (!FileRange.isValid())
     return;

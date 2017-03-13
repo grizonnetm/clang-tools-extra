@@ -12,45 +12,67 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/Path.h"
 
 #define DEBUG_TYPE "include-fixer"
 
 namespace clang {
 namespace include_fixer {
 
-using clang::find_all_symbols::SymbolInfo;
+using find_all_symbols::SymbolInfo;
+using find_all_symbols::SymbolAndSignals;
 
-/// Sorts and uniques SymbolInfos based on the popularity info in SymbolInfo.
-static void rankByPopularity(std::vector<SymbolInfo> &Symbols) {
-  // First collect occurrences per header file.
-  llvm::DenseMap<llvm::StringRef, unsigned> HeaderPopularity;
-  for (const SymbolInfo &Symbol : Symbols) {
-    unsigned &Popularity = HeaderPopularity[Symbol.getFilePath()];
-    Popularity = std::max(Popularity, Symbol.getNumOccurrences());
+// Calculate a score based on whether we think the given header is closely
+// related to the given source file.
+static double similarityScore(llvm::StringRef FileName,
+                              llvm::StringRef Header) {
+  // Compute the maximum number of common path segements between Header and
+  // a suffix of FileName.
+  // We do not do a full longest common substring computation, as Header
+  // specifies the path we would directly #include, so we assume it is rooted
+  // relatively to a subproject of the repository.
+  int MaxSegments = 1;
+  for (auto FileI = llvm::sys::path::begin(FileName),
+            FileE = llvm::sys::path::end(FileName);
+       FileI != FileE; ++FileI) {
+    int Segments = 0;
+    for (auto HeaderI = llvm::sys::path::begin(Header),
+              HeaderE = llvm::sys::path::end(Header), I = FileI;
+         HeaderI != HeaderE && *I == *HeaderI && I != FileE; ++I, ++HeaderI) {
+      ++Segments;
+    }
+    MaxSegments = std::max(Segments, MaxSegments);
   }
-
-  // Sort by the gathered popularities. Use file name as a tie breaker so we can
-  // deduplicate.
-  std::sort(Symbols.begin(), Symbols.end(),
-            [&](const SymbolInfo &A, const SymbolInfo &B) {
-              auto APop = HeaderPopularity[A.getFilePath()];
-              auto BPop = HeaderPopularity[B.getFilePath()];
-              if (APop != BPop)
-                return APop > BPop;
-              return A.getFilePath() < B.getFilePath();
-            });
-
-  // Deduplicate based on the file name. They will have the same popularity and
-  // we don't want to suggest the same header twice.
-  Symbols.erase(std::unique(Symbols.begin(), Symbols.end(),
-                            [](const SymbolInfo &A, const SymbolInfo &B) {
-                              return A.getFilePath() == B.getFilePath();
-                            }),
-                Symbols.end());
+  return MaxSegments;
 }
 
-std::vector<std::string>
-SymbolIndexManager::search(llvm::StringRef Identifier) const {
+static void rank(std::vector<SymbolAndSignals> &Symbols,
+                 llvm::StringRef FileName) {
+  llvm::DenseMap<llvm::StringRef, double> Score;
+  for (const auto &Symbol : Symbols) {
+    // Calculate a score from the similarity of the header the symbol is in
+    // with the current file and the popularity of the symbol.
+    double NewScore = similarityScore(FileName, Symbol.Symbol.getFilePath()) *
+                      (1.0 + std::log2(1 + Symbol.Signals.Seen));
+    double &S = Score[Symbol.Symbol.getFilePath()];
+    S = std::max(S, NewScore);
+  }
+  // Sort by the gathered scores. Use file name as a tie breaker so we can
+  // deduplicate.
+  std::sort(Symbols.begin(), Symbols.end(),
+            [&](const SymbolAndSignals &A, const SymbolAndSignals &B) {
+              auto AS = Score[A.Symbol.getFilePath()];
+              auto BS = Score[B.Symbol.getFilePath()];
+              if (AS != BS)
+                return AS > BS;
+              return A.Symbol.getFilePath() < B.Symbol.getFilePath();
+            });
+}
+
+std::vector<find_all_symbols::SymbolInfo>
+SymbolIndexManager::search(llvm::StringRef Identifier,
+                           bool IsNestedSearch,
+                           llvm::StringRef FileName) const {
   // The identifier may be fully qualified, so split it and get all the context
   // names.
   llvm::SmallVector<llvm::StringRef, 8> Names;
@@ -67,20 +89,19 @@ SymbolIndexManager::search(llvm::StringRef Identifier) const {
   // Eventually we will either hit a class (namespaces aren't in the database
   // either) and can report that result.
   bool TookPrefix = false;
-  std::vector<std::string> Results;
-  while (Results.empty() && !Names.empty()) {
-    std::vector<clang::find_all_symbols::SymbolInfo> Symbols;
+  std::vector<SymbolAndSignals> MatchedSymbols;
+  do {
+    std::vector<SymbolAndSignals> Symbols;
     for (const auto &DB : SymbolIndices) {
-      auto Res = DB->search(Names.back().str());
+      auto Res = DB.get()->search(Names.back());
       Symbols.insert(Symbols.end(), Res.begin(), Res.end());
     }
 
     DEBUG(llvm::dbgs() << "Searching " << Names.back() << "... got "
                        << Symbols.size() << " results...\n");
 
-    rankByPopularity(Symbols);
-
-    for (const auto &Symbol : Symbols) {
+    for (auto &SymAndSig : Symbols) {
+      const SymbolInfo &Symbol = SymAndSig.Symbol;
       // Match the identifier name without qualifier.
       if (Symbol.getName() == Names.back()) {
         bool IsMatched = true;
@@ -120,23 +141,20 @@ SymbolIndexManager::search(llvm::StringRef Identifier) const {
                Symbol.getSymbolKind() == SymbolInfo::SymbolKind::Macro))
             continue;
 
-          // FIXME: file path should never be in the form of <...> or "...", but
-          // the unit test with fixed database use <...> file path, which might
-          // need to be changed.
-          // FIXME: if the file path is a system header name, we want to use
-          // angle brackets.
-          std::string FilePath = Symbol.getFilePath().str();
-          Results.push_back((FilePath[0] == '"' || FilePath[0] == '<')
-                                ? FilePath
-                                : "\"" + FilePath + "\"");
+          MatchedSymbols.push_back(std::move(SymAndSig));
         }
       }
     }
     Names.pop_back();
     TookPrefix = true;
-  }
+  } while (MatchedSymbols.empty() && !Names.empty() && IsNestedSearch);
 
-  return Results;
+  rank(MatchedSymbols, FileName);
+  // Strip signals, they are no longer needed.
+  std::vector<SymbolInfo> Res;
+  for (const auto &SymAndSig : MatchedSymbols)
+    Res.push_back(std::move(SymAndSig.Symbol));
+  return Res;
 }
 
 } // namespace include_fixer

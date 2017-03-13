@@ -33,27 +33,26 @@ void RedundantStringInitCheck::registerMatchers(MatchFinder *Finder) {
                        hasArgument(1, cxxDefaultArgExpr()))));
 
   // Match a string constructor expression with an empty string literal.
-  const auto EmptyStringCtorExpr =
-      cxxConstructExpr(StringConstructorExpr,
-          hasArgument(0, ignoringParenImpCasts(
-                             stringLiteral(hasSize(0)))));
+  const auto EmptyStringCtorExpr = cxxConstructExpr(
+      StringConstructorExpr,
+      hasArgument(0, ignoringParenImpCasts(stringLiteral(hasSize(0)))));
 
   const auto EmptyStringCtorExprWithTemporaries =
-      expr(ignoringImplicit(
-          cxxConstructExpr(StringConstructorExpr,
-              hasArgument(0, ignoringImplicit(EmptyStringCtorExpr)))));
+      cxxConstructExpr(StringConstructorExpr,
+                       hasArgument(0, ignoringImplicit(EmptyStringCtorExpr)));
 
   // Match a variable declaration with an empty string literal as initializer.
   // Examples:
   //     string foo = "";
   //     string bar("");
   Finder->addMatcher(
-      namedDecl(varDecl(hasType(cxxRecordDecl(hasName("basic_string"))),
-                        hasInitializer(
-                            expr(anyOf(EmptyStringCtorExpr,
-                                       EmptyStringCtorExprWithTemporaries))
-                            .bind("expr"))),
-                unless(parmVarDecl()))
+      namedDecl(
+          varDecl(hasType(cxxRecordDecl(hasName("basic_string"))),
+                  hasInitializer(expr(ignoringImplicit(anyOf(
+                                          EmptyStringCtorExpr,
+                                          EmptyStringCtorExprWithTemporaries)))
+                                     .bind("expr"))),
+          unless(parmVarDecl()))
           .bind("decl"),
       this);
 }

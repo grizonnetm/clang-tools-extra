@@ -8,19 +8,24 @@
 //===----------------------------------------------------------------------===//
 
 #include "FindAllSymbolsAction.h"
+#include "FindAllMacros.h"
+#include "clang/Lex/PPCallbacks.h"
+#include "clang/Lex/Preprocessor.h"
+#include "llvm/ADT/STLExtras.h"
 
 namespace clang {
 namespace find_all_symbols {
 
 FindAllSymbolsAction::FindAllSymbolsAction(
-    SymbolReporter *Reporter, const HeaderMapCollector::HeaderMap *PostfixMap)
-    : Reporter(Reporter), Collector(PostfixMap), Handler(&Collector),
+    SymbolReporter *Reporter,
+    const HeaderMapCollector::RegexHeaderMap *RegexHeaderMap)
+    : Reporter(Reporter), Collector(RegexHeaderMap), Handler(&Collector),
       Matcher(Reporter, &Collector) {
   Matcher.registerMatchers(&MatchFinder);
 }
 
-std::unique_ptr<clang::ASTConsumer>
-FindAllSymbolsAction::CreateASTConsumer(clang::CompilerInstance &Compiler,
+std::unique_ptr<ASTConsumer>
+FindAllSymbolsAction::CreateASTConsumer(CompilerInstance &Compiler,
                                         StringRef InFile) {
   Compiler.getPreprocessor().addCommentHandler(&Handler);
   Compiler.getPreprocessor().addPPCallbacks(llvm::make_unique<FindAllMacros>(

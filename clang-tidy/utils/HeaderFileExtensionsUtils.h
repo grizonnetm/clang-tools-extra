@@ -12,8 +12,8 @@
 
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace clang {
 namespace tidy {
@@ -21,17 +21,17 @@ namespace utils {
 
 typedef llvm::SmallSet<llvm::StringRef, 5> HeaderFileExtensionsSet;
 
-/// \brief Checks whether expansion location of Loc is in header file.
+/// \brief Checks whether expansion location of \p Loc is in header file.
 bool isExpansionLocInHeaderFile(
     SourceLocation Loc, const SourceManager &SM,
     const HeaderFileExtensionsSet &HeaderFileExtensions);
 
-/// \brief Checks whether presumed location of Loc is in header file.
+/// \brief Checks whether presumed location of \p Loc is in header file.
 bool isPresumedLocInHeaderFile(
     SourceLocation Loc, SourceManager &SM,
     const HeaderFileExtensionsSet &HeaderFileExtensions);
 
-/// \brief Checks whether spelling location of Loc is in header file.
+/// \brief Checks whether spelling location of \p Loc is in header file.
 bool isSpellingLocInHeaderFile(
     SourceLocation Loc, SourceManager &SM,
     const HeaderFileExtensionsSet &HeaderFileExtensions);
@@ -40,6 +40,10 @@ bool isSpellingLocInHeaderFile(
 bool parseHeaderFileExtensions(StringRef AllHeaderFileExtensions,
                                HeaderFileExtensionsSet &HeaderFileExtensions,
                                char delimiter);
+
+/// \brief Decides whether a file has a header file extension.
+bool isHeaderFileExtension(StringRef FileName,
+                           const HeaderFileExtensionsSet &HeaderFileExtensions);
 
 } // namespace utils
 } // namespace tidy

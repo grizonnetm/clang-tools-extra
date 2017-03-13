@@ -24,6 +24,7 @@ Contents
    include-fixer
    modularize
    pp-trace
+   clang-rename
 
 
 Doxygen Documentation
@@ -38,7 +39,7 @@ or reference manual for each tool.
 
 .. _`Doxygen documentation`: doxygen/annotated.html
 
-..  note::
+.. note::
     This documentation is generated directly from the source code with doxygen.
     Since the tools of clang-tools-extra are constantly under active
     development, what you're about to read is out of date!
